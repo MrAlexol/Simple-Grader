@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Проверка заданий</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">Simple Grader</div>
+
+        <div class="doc">
+          <label class="label" for="docId">doc_id</label>
+          <input
+            id="docId"
+            class="input"
+            placeholder="например 111"
+            inputmode="numeric"
+          />
+          <button id="loadBtn" class="btn primary">Загрузить</button>
+        </div>
+      </header>
+
+      <main class="main">
+        <section id="status" class="status hidden"></section>
+
+        <section id="workspace" class="workspace hidden">
+          <div class="taskNav" id="taskNav"></div>
+
+          <article class="taskCard">
+            <h2 class="taskTitle" id="taskTitle">Задание</h2>
+            <p class="taskText" id="taskText"></p>
+
+            <div class="example">
+              <div class="exampleTitle">Пример</div>
+              <pre class="exampleBox" id="taskExample"></pre>
+            </div>
+
+            <div class="editor">
+              <label class="label" for="code">Ваш код</label>
+              <textarea
+                id="code"
+                class="textarea"
+                rows="10"
+                placeholder="// Вставьте сюда решение..."
+              ></textarea>
+
+              <div class="actions">
+                <button class="btn" id="hint1Btn">Подсказка 1</button>
+                <button class="btn" id="hint2Btn">Подсказка 2</button>
+                <button class="btn primary" id="answerBtn">Дать ответ</button>
+              </div>
+
+              <div class="result hidden" id="resultBox"></div>
+            </div>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
