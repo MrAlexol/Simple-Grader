@@ -1,3 +1,5 @@
+var OPENAI_DEFAULT_MODEL = "gpt-4o-mini";
+
 function requireEnv(name) {
   const v = process.env[name];
   if (!v) throw new Error(`Не задана переменная окружения ${name}`);
@@ -6,14 +8,19 @@ function requireEnv(name) {
 
 function formatExample(example) {
   const ex = example || { input: [], output: [] };
-  const inputLines = Array.isArray(ex.input) ? ex.input.map(String).join("\n") : "";
-  const outputLines = Array.isArray(ex.output) ? ex.output.map(String).join("\n") : "";
+  const inputLines = Array.isArray(ex.input)
+    ? ex.input.map(String).join("\n")
+    : "";
+  const outputLines = Array.isArray(ex.output)
+    ? ex.output.map(String).join("\n")
+    : "";
   return `Входные данные\n${inputLines}\n\nВыходные данные\n${outputLines}`;
 }
 
 function extractOutputText(json) {
   // Часто приходит output_text (в SDK), но на всякий случай парсим output[]
-  if (typeof json.output_text === "string" && json.output_text.trim()) return json.output_text;
+  if (typeof json.output_text === "string" && json.output_text.trim())
+    return json.output_text;
 
   const out = json.output;
   if (!Array.isArray(out)) return "";
@@ -22,7 +29,8 @@ function extractOutputText(json) {
   for (const item of out) {
     if (item?.type === "message" && Array.isArray(item.content)) {
       for (const c of item.content) {
-        if (c?.type === "output_text" && typeof c.text === "string") text += c.text;
+        if (c?.type === "output_text" && typeof c.text === "string")
+          text += c.text;
         if (c?.type === "text" && typeof c.text === "string") text += c.text;
       }
     }
@@ -32,11 +40,10 @@ function extractOutputText(json) {
 
 async function callOpenAIForHint({ level, task, code }) {
   const apiKey = requireEnv("OPENAI_API_KEY");
-  const model = process.env.OPENAI_MODEL || "gpt-5-nano";
+  const model = process.env.OPENAI_MODEL || OPENAI_DEFAULT_MODEL;
 
   const taskBlock =
-    `ЗАДАНИЕ:\n${task.text}\n\n` +
-    `ПРИМЕР:\n${formatExample(task.example)}\n`;
+    `ЗАДАНИЕ:\n${task.text}\n\n` + `ПРИМЕР:\n${formatExample(task.example)}\n`;
 
   // Жёсткие правила: не выдавать готовое решение
   const policy =
@@ -80,7 +87,6 @@ async function callOpenAIForHint({ level, task, code }) {
         { role: "user", content: userPrompt },
       ],
       // чтобы подсказки были стабильными и не “разъезжались”
-      temperature: 0.4,
       max_output_tokens: 400,
     }),
   });
@@ -95,6 +101,70 @@ async function callOpenAIForHint({ level, task, code }) {
   return text || "Пустой ответ от виртуального помощника (попробуйте ещё раз).";
 }
 
+async function callOpenAIForAnswerVerdict({ task, code }) {
+  const apiKey = requireEnv("OPENAI_API_KEY");
+  const model = process.env.OPENAI_MODEL || OPENAI_DEFAULT_MODEL;
+
+  const taskBlock =
+    `ЗАДАНИЕ:\n${task.text}\n\n` + `ПРИМЕР:\n${formatExample(task.example)}\n`;
+
+  const userPrompt =
+    `${taskBlock}\n` +
+    `КОД РЕШЕНИЯ УЧЕНИКА:\n` +
+    "```txt\n" +
+    `${code}\n` +
+    "```\n\n" +
+    `Требования:\n` +
+    `- Проверь, соответствует ли программа заданию.\n` +
+    `- Выполни мысленный прогон на разных тестах, включая крайние значения (пустые/минимальные/максимальные, отрицательные, повторяющиеся, большие числа — по смыслу задачи).\n` +
+    `- Если код не компилируется/имеет синтаксические ошибки/логические ошибки/не проходит хотя бы часть тестов — считаем, что ответ НЕ принят.\n\n` +
+    `ОЧЕНЬ ВАЖНО:\n` +
+    `- Ответь СТРОГО ОДНОЙ фразой (без точек, пояснений, подсказок и добавочного текста):\n` +
+    `  1) Отлично, ответ принят\n` +
+    `  2) Найдены ошибки при автоматической проверке решения\n`;
+
+  const resp = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      input: [
+        {
+          role: "developer",
+          content:
+            "Ты автоматический валидатор решений по программированию. " +
+            "Никаких подсказок. Никаких объяснений. " +
+            "Возвращай строго одну из двух допустимых фраз и ничего больше.",
+        },
+        { role: "user", content: userPrompt },
+      ],
+      max_output_tokens: 20,
+    }),
+  });
+
+  const json = await resp.json();
+  if (!resp.ok) {
+    const msg = json?.error?.message || "Ошибка OpenAI API";
+    throw new Error(msg);
+  }
+
+  const text = extractOutputText(json).trim();
+
+  // Жёсткая нормализация: клиент должен получить ТОЛЬКО одну из двух фраз.
+  const OK = "Отлично, ответ принят";
+  const BAD = "Найдены ошибки при автоматической проверке решения";
+
+  if (text === OK) return OK;
+  if (text === BAD) return BAD;
+
+  // Если модель нарушила формат — считаем, что проверка не пройдена
+  return BAD;
+}
+
 module.exports = {
   callOpenAIForHint,
+  callOpenAIForAnswerVerdict,
 };

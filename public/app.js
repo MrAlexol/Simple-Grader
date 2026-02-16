@@ -146,7 +146,6 @@ async function submit(action) {
     return;
   }
 
-  // Заглушка: можно добавить простую валидацию на пустой код
   if (!code.trim()) {
     showResult(
       "Код пустой. Вставьте решение в поле и попробуйте снова.",
@@ -187,4 +186,4 @@ els.hint2Btn.addEventListener("click", () => submit("hint2"));
 els.answerBtn.addEventListener("click", () => submit("answer"));
 
 // стартовое состояние
-showStatus("Введите doc_id и нажмите «Загрузить».");
+showStatus("Введите свой идентификатор и нажмите «Загрузить».");

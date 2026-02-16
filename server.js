@@ -11,9 +11,7 @@ const {
   appendLog,
   findTaskById,
 } = require("./db");
-const {
-  callOpenAIForHint,
-} = require("./openAiHelpers");
+const { callOpenAIForHint } = require("./openAiHelpers");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 
@@ -93,14 +91,14 @@ async function handleApi(req, res, url) {
 
     if (!docIdStr || Number.isNaN(docId)) {
       return sendJson(res, 400, {
-        error: "Параметр doc_id обязателен и должен быть числом.",
+        error: "Идентификатор обязателен и должен быть числом.",
       });
     }
 
     const user = await findUserByDocId(docId);
     if (!user) {
       return sendJson(res, 404, {
-        error: `Пользователь с doc_id=${docId} не найден.`,
+        error: `Пользователь с идентификатором "${docId}" не найден.`,
       });
     }
 
@@ -134,7 +132,7 @@ async function handleApi(req, res, url) {
     const user = await findUserByDocId(docId);
     if (!user) {
       return sendJson(res, 404, {
-        error: `Пользователь с doc_id=${docId} не найден.`,
+        error: `Пользователь с идентификатором "${docId}" не найден.`,
       });
     }
 
@@ -149,20 +147,30 @@ async function handleApi(req, res, url) {
 
     let message;
 
-    if (action === "hint1") {
-      message = await callOpenAIForHint({ level: 1, task, code });
-    } else if (action === "hint2") {
-      message = await callOpenAIForHint({ level: 2, task, code });
-    } else {
-      // "answer" пока оставим заглушкой (или позже сделаем проверку тестами)
-      console.log("[ANSWER STUB]", { docId, taskId, codeLen: code.length });
-      message =
-        "Пока заглушка: проверка и полный ответ будут реализованы позже.";
+    try {
+      if (action === "hint1") {
+        message = await callOpenAIForHint({ level: 1, task, code });
+      } else if (action === "hint2") {
+        message = await callOpenAIForHint({ level: 2, task, code });
+      } else if (action === "answer") {
+        message = await callOpenAIForAnswerVerdict({ task, code });
+      } else {
+        console.log("[UNKNOWN ACTION]", action);
+        message = "Найдены ошибки при автоматической проверке решения";
+      }
+    } catch (e) {
+      message = "Ошибка сервера!";
+      await appendLog({
+        user_id: user.id,
+        body: `action=${action}; task_id=${taskId}\n` + `CODE:\n` + `${code}`,
+        response: message,
+      });
+      return sendJson(res, 500, { ok: false, message: "", error: "Ошибка внешнего сервиса!" });
     }
 
     await appendLog({
       user_id: user.id,
-      prompt: `action=${action}; task_id=${taskId}; code_len=${code.length}`,
+      body: `action=${action}; task_id=${taskId}\n` + `CODE:\n` + `${code}`,
       response: message,
     });
 

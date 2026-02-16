@@ -119,14 +119,14 @@ async function findTasksByIds(ids) {
     }));
 }
 
-async function appendLog({ user_id, prompt, response }) {
+async function appendLog({ user_id, body, response }) {
   const logs = await readJsonLines(LOGS_FILE);
   const id = nextId(logs);
 
   await appendJsonLine(LOGS_FILE, {
     id,
     user_id,
-    prompt: String(prompt || ""),
+    body: String(body || ""),
     response: String(response || ""),
     ts: new Date().toISOString(),
   });
