@@ -177,6 +177,7 @@ async function handleApi(req, res, url) {
         await setResultCheck(user.id, taskId, false);
       }
     } catch (e) {
+      console.error("OpenAI API error:", e?.message || e);
       message = "Ошибка сервера!";
       await appendLog({
         user_id: user.id,
