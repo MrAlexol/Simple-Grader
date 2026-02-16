@@ -6,6 +6,7 @@ const DB_DIR = path.join(__dirname, "db");
 const USERS_FILE = path.join(DB_DIR, "users.txt");
 const TASKS_FILE = path.join(DB_DIR, "tasks.txt");
 const LOGS_FILE = path.join(DB_DIR, "logs.txt");
+const APILOGS_FILE = path.join(DB_DIR, "apilogs.txt");
 
 async function ensureDir(dir) {
   try {
@@ -96,6 +97,7 @@ async function ensureDbFiles() {
   await ensureFile(USERS_FILE, demoUsers);
   await ensureFile(TASKS_FILE, demoTasks);
   await ensureFile(LOGS_FILE, "");
+  await ensureFile(APILOGS_FILE, "");
 }
 
 async function findUserByDocId(docId) {
@@ -137,10 +139,20 @@ async function findTaskById(taskId) {
   return tasks.find((t) => t.id === taskId) || null;
 }
 
+async function appendApiLog(entry) {
+  // entry: { type: "request"|"response"|"error", object: any, ...meta }
+  await appendJsonLine(APILOGS_FILE, {
+    id: Date.now(), // достаточно для простого логирования
+    ts: new Date().toISOString(),
+    ...entry,
+  });
+}
+
 module.exports = {
   ensureDbFiles,
   findUserByDocId,
   findTasksByIds,
   appendLog,
   findTaskById,
+  appendApiLog,
 };

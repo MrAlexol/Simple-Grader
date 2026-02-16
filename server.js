@@ -10,6 +10,7 @@ const {
   findTasksByIds,
   appendLog,
   findTaskById,
+  appendApiLog,
 } = require("./db");
 const {
   callOpenAIForHint,

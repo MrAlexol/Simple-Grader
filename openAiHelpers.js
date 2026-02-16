@@ -1,5 +1,7 @@
 var OPENAI_DEFAULT_MODEL = "gpt-4o-mini";
 
+const { appendApiLog } = require("./db");
+
 function requireEnv(name) {
   const v = process.env[name];
   if (!v) throw new Error(`Не задана переменная окружения ${name}`);
@@ -69,26 +71,37 @@ async function callOpenAIForHint({ level, task, code }) {
     `${hintStyle}\n\n` +
     `Ответ дай на русском.`;
 
+  const startedAt = Date.now();
+
+  const requestPayload = {
+    model,
+    input: [
+      {
+        role: "developer",
+        content:
+          "Ты помощник для обучения программированию на Python. Твоя цель — давать подсказки без готовых решений. " +
+          "Если ученик просит полный ответ, откажись и предложи следующую подсказку/намёк.",
+      },
+      { role: "user", content: userPrompt },
+    ],
+    max_output_tokens: 400,
+  };
+
+  await appendApiLog({
+    type: "request",
+    api: "openai.responses.create",
+    hint_level: level,
+    endpoint: "/v1/responses",
+    object: requestPayload, // ВАЖНО: здесь нет API ключа
+  });
+
   const resp = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model,
-      input: [
-        {
-          role: "developer",
-          content:
-            "Ты помощник для обучения программированию на Python. Твоя цель — давать подсказки без готовых решений. " +
-            "Если ученик просит полный ответ, откажись и предложи следующую подсказку/намёк.",
-        },
-        { role: "user", content: userPrompt },
-      ],
-      // чтобы подсказки были стабильными и не “разъезжались”
-      max_output_tokens: 400,
-    }),
+    body: JSON.stringify(requestPayload),
   });
 
   const json = await resp.json();
@@ -96,6 +109,21 @@ async function callOpenAIForHint({ level, task, code }) {
     const msg = json?.error?.message || "Ошибка OpenAI API";
     throw new Error(msg);
   }
+
+  const duration_ms = Date.now() - startedAt;
+
+  await appendApiLog({
+    type: "response",
+    api: "openai.responses.create",
+    hint_level: level,
+    endpoint: "/v1/responses",
+    status: resp.status,
+    ok: resp.ok,
+    request_id: resp.headers.get("x-request-id") || null,
+    duration_ms,
+    usage: json?.usage || null,
+    object: json,
+  });
 
   const text = extractOutputText(json);
   return text || "Пустой ответ от виртуального помощника (попробуйте ещё раз).";
@@ -123,26 +151,38 @@ async function callOpenAIForAnswerVerdict({ task, code }) {
     `  1) Отлично, ответ принят\n` +
     `  2) Найдены ошибки при автоматической проверке решения\n`;
 
+  const startedAt = Date.now();
+
+  const requestPayload = {
+    model,
+    input: [
+      {
+        role: "developer",
+        content:
+          "Ты автоматический валидатор решений по программированию. " +
+          "Никаких подсказок. Никаких объяснений. " +
+          "Возвращай строго одну из двух допустимых фраз и ничего больше.",
+      },
+      { role: "user", content: userPrompt },
+    ],
+    max_output_tokens: 20,
+  };
+
+  await appendApiLog({
+    type: "request",
+    api: "openai.responses.create",
+    action: "answer",
+    endpoint: "/v1/responses",
+    object: requestPayload,
+  });
+
   const resp = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model,
-      input: [
-        {
-          role: "developer",
-          content:
-            "Ты автоматический валидатор решений по программированию. " +
-            "Никаких подсказок. Никаких объяснений. " +
-            "Возвращай строго одну из двух допустимых фраз и ничего больше.",
-        },
-        { role: "user", content: userPrompt },
-      ],
-      max_output_tokens: 20,
-    }),
+    body: JSON.stringify(requestPayload),
   });
 
   const json = await resp.json();
@@ -150,6 +190,21 @@ async function callOpenAIForAnswerVerdict({ task, code }) {
     const msg = json?.error?.message || "Ошибка OpenAI API";
     throw new Error(msg);
   }
+
+  const duration_ms = Date.now() - startedAt;
+
+  await appendApiLog({
+    type: "response",
+    api: "openai.responses.create",
+    action: "answer",
+    endpoint: "/v1/responses",
+    status: resp.status,
+    ok: resp.ok,
+    request_id: resp.headers.get("x-request-id") || null,
+    duration_ms,
+    usage: json?.usage || null,
+    object: json,
+  });
 
   const text = extractOutputText(json).trim();
 
