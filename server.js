@@ -11,7 +11,10 @@ const {
   appendLog,
   findTaskById,
 } = require("./db");
-const { callOpenAIForHint } = require("./openAiHelpers");
+const {
+  callOpenAIForHint,
+  callOpenAIForAnswerVerdict,
+} = require("./openAiHelpers");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 
@@ -165,7 +168,11 @@ async function handleApi(req, res, url) {
         body: `action=${action}; task_id=${taskId}\n` + `CODE:\n` + `${code}`,
         response: message,
       });
-      return sendJson(res, 500, { ok: false, message: "", error: "Ошибка внешнего сервиса!" });
+      return sendJson(res, 500, {
+        ok: false,
+        message: "",
+        error: "Ошибка внешнего сервиса!",
+      });
     }
 
     await appendLog({

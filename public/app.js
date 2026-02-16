@@ -22,6 +22,35 @@ let state = {
   activeIndex: 0,
 };
 
+function setBusy(isBusy, activeAction = null) {
+  const btns = [els.hint1Btn, els.hint2Btn, els.answerBtn];
+  btns.forEach((b) => (b.disabled = isBusy));
+
+  // Текст “загрузки” только на нажатой кнопке
+  if (activeAction) {
+    const map = {
+      hint1: els.hint1Btn,
+      hint2: els.hint2Btn,
+      answer: els.answerBtn,
+    };
+    const btn = map[activeAction];
+    if (btn) {
+      if (!btn.dataset.originalText) btn.dataset.originalText = btn.textContent;
+      btn.textContent = "Загрузка...";
+    }
+  }
+
+  // Вернуть исходные тексты, когда загрузка закончилась
+  if (!isBusy) {
+    btns.forEach((b) => {
+      if (b.dataset.originalText) {
+        b.textContent = b.dataset.originalText;
+        delete b.dataset.originalText;
+      }
+    });
+  }
+}
+
 function showStatus(message, kind = "info") {
   els.status.classList.remove("hidden", "error");
   els.status.textContent = message;
@@ -42,8 +71,16 @@ function hideWorkspace() {
 
 function showResult(message, kind = "ok") {
   els.resultBox.classList.remove("hidden", "ok");
-  els.resultBox.textContent = message;
   if (kind === "ok") els.resultBox.classList.add("ok");
+
+  const safe = String(message ?? "");
+
+  // Если marked не загрузился — fallback на plain text
+  if (window.marked && typeof window.marked.parse === "function") {
+    els.resultBox.innerHTML = window.marked.parse(safe);
+  } else {
+    els.resultBox.textContent = safe;
+  }
 }
 
 function hideResult() {
@@ -154,6 +191,8 @@ async function submit(action) {
     return;
   }
 
+  setBusy(true, action);
+
   try {
     const resp = await fetch("/api/submit", {
       method: "POST",
@@ -161,7 +200,7 @@ async function submit(action) {
       body: JSON.stringify({
         doc_id: Number(docId),
         task_id: task.id,
-        action, // "hint1" | "hint2" | "answer"
+        action,
         code,
       }),
     });
@@ -173,6 +212,8 @@ async function submit(action) {
   } catch (e) {
     console.log("submit error:", e);
     showResult(`Ошибка: ${e.message}`, "error");
+  } finally {
+    setBusy(false);
   }
 }
 
