@@ -1,12 +1,14 @@
 // db.js
 const fs = require("fs/promises");
 const path = require("path");
+const { randomUUID } = require("crypto");
 
 const DB_DIR = path.join(__dirname, "db");
 const USERS_FILE = path.join(DB_DIR, "users.txt");
 const TASKS_FILE = path.join(DB_DIR, "tasks.txt");
 const LOGS_FILE = path.join(DB_DIR, "logs.txt");
 const APILOGS_FILE = path.join(DB_DIR, "apilogs.txt");
+const RESULTS_FILE = path.join(DB_DIR, "results.txt");
 
 async function ensureDir(dir) {
   try {
@@ -48,6 +50,17 @@ async function appendJsonLine(filePath, obj) {
   await fs.appendFile(filePath, line + "\n", "utf-8");
 }
 
+async function writeJsonLines(filePath, rows) {
+  const text =
+    rows.map((r) => JSON.stringify(r)).join("\n") + (rows.length ? "\n" : "");
+  await fs.writeFile(filePath, text, "utf-8");
+}
+
+function makeIntId() {
+  // int (JS number) + минимальный риск коллизий без чтения файла
+  return Date.now() * 1000 + Math.floor(Math.random() * 1000);
+}
+
 function nextId(rows) {
   let max = 0;
   for (const r of rows) {
@@ -64,7 +77,9 @@ async function ensureDbFiles() {
     [
       { id: 1, doc_id: 111, tasks: [1, 2, 3] },
       { id: 2, doc_id: 222, tasks: [2] },
-    ].map((x) => JSON.stringify(x)).join("\n") + "\n";
+    ]
+      .map((x) => JSON.stringify(x))
+      .join("\n") + "\n";
 
   const demoTasks =
     [
@@ -92,12 +107,15 @@ async function ensureDbFiles() {
         example: { input: [1, 2, 3, 4], output: [2, 4] },
         tests: [{ input: [7, 9], output: [] }],
       },
-    ].map((x) => JSON.stringify(x)).join("\n") + "\n";
+    ]
+      .map((x) => JSON.stringify(x))
+      .join("\n") + "\n";
 
   await ensureFile(USERS_FILE, demoUsers);
   await ensureFile(TASKS_FILE, demoTasks);
   await ensureFile(LOGS_FILE, "");
   await ensureFile(APILOGS_FILE, "");
+  await ensureFile(RESULTS_FILE, "");
 }
 
 async function findUserByDocId(docId) {
@@ -117,20 +135,16 @@ async function findTasksByIds(ids) {
       id: t.id,
       text: t.text,
       example: t.example,
-      // tests пока не отдаём на фронт (по желанию можешь отдать)
     }));
 }
 
 async function appendLog({ user_id, body, response }) {
-  const logs = await readJsonLines(LOGS_FILE);
-  const id = nextId(logs);
-
   await appendJsonLine(LOGS_FILE, {
-    id,
+    id: randomUUID(),
+    ts: new Date().toISOString(),
     user_id,
     body: String(body || ""),
     response: String(response || ""),
-    ts: new Date().toISOString(),
   });
 }
 
@@ -148,6 +162,67 @@ async function appendApiLog(entry) {
   });
 }
 
+async function getOrCreateResult(user_id, task_id) {
+  const rows = await readJsonLines(RESULTS_FILE);
+  let row = rows.find((r) => r.user_id === user_id && r.task_id === task_id);
+
+  if (!row) {
+    row = {
+      id: makeIntId(),
+      user_id,
+      task_id,
+      hints_used: 0,
+      check: false,
+      ts_created: new Date().toISOString(),
+      ts_updated: new Date().toISOString(),
+    };
+    rows.push(row);
+    await writeJsonLines(RESULTS_FILE, rows);
+  }
+
+  return row;
+}
+
+async function incrementHintsUsed(user_id, task_id, delta = 1) {
+  const rows = await readJsonLines(RESULTS_FILE);
+  const idx = rows.findIndex(
+    (r) => r.user_id === user_id && r.task_id === task_id,
+  );
+  if (idx === -1) return null;
+
+  rows[idx].hints_used = Number(rows[idx].hints_used || 0) + delta;
+  rows[idx].ts_updated = new Date().toISOString();
+
+  await writeJsonLines(RESULTS_FILE, rows);
+  return rows[idx];
+}
+
+async function setResultCheck(user_id, task_id, checkValue) {
+  const rows = await readJsonLines(RESULTS_FILE);
+  const idx = rows.findIndex(
+    (r) => r.user_id === user_id && r.task_id === task_id,
+  );
+  if (idx === -1) return null;
+
+  rows[idx].check = Boolean(checkValue);
+  rows[idx].ts_updated = new Date().toISOString();
+
+  await writeJsonLines(RESULTS_FILE, rows);
+  return rows[idx];
+}
+
+async function readAllUsers() {
+  return await readJsonLines(USERS_FILE);
+}
+
+async function readAllResults() {
+  return await readJsonLines(RESULTS_FILE);
+}
+
+async function readAllTasks() {
+  return await readJsonLines(TASKS_FILE);
+}
+
 module.exports = {
   ensureDbFiles,
   findUserByDocId,
@@ -155,4 +230,10 @@ module.exports = {
   appendLog,
   findTaskById,
   appendApiLog,
+  getOrCreateResult,
+  incrementHintsUsed,
+  setResultCheck,
+  readAllUsers,
+  readAllResults,
+  readAllTasks,
 };

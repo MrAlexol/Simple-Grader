@@ -14,6 +14,12 @@ const els = {
   hint2Btn: document.getElementById("hint2Btn"),
   answerBtn: document.getElementById("answerBtn"),
   resultBox: document.getElementById("resultBox"),
+  refreshResultsBtn: document.getElementById("refreshResultsBtn"),
+  resultsTable: document.getElementById("resultsTable"),
+  openResultsBtn: document.getElementById("openResultsBtn"),
+  resultsOverlay: document.getElementById("resultsOverlay"),
+  closeResultsBtn: document.getElementById("closeResultsBtn"),
+  resultsBackdrop: document.getElementById("resultsBackdrop"),
 };
 
 let state = {
@@ -128,6 +134,75 @@ function renderTask() {
     `${outputLines}`;
 }
 
+function renderResultsTable(view) {
+  const table = els.resultsTable;
+  const taskIds = Array.isArray(view.task_ids) ? view.task_ids : [];
+  const rows = Array.isArray(view.rows) ? view.rows : [];
+
+  // header
+  const thead =
+    `<thead><tr>` +
+    `<th>doc_id</th>` +
+    taskIds
+      .map(
+        (tid) =>
+          `<th>Задание #${tid}<br/><span style="font-weight:400;">подсказки, результат</span></th>`,
+      )
+      .join("") +
+    `</tr></thead>`;
+
+  // body
+  const tbodyRows = rows
+    .map((r) => {
+      const tds = taskIds.map((tid) => {
+        // показываем значение только если это задание относится к пользователю
+        const belongs = Array.isArray(r.tasks) && r.tasks.includes(tid);
+        if (!belongs) return `<td></td>`;
+
+        const cell = r.cells?.[tid];
+        const hints = cell ? Number(cell.hints_used || 0) : 0;
+        const ok = cell ? Boolean(cell.check) : false;
+
+        const cls = ok ? "cellOk" : "cellBad";
+        const resultText = ok ? "принято" : "не принято";
+
+        return `<td class="${cls}">${hints}, ${resultText}</td>`;
+      });
+
+      return `<tr><td>${r.doc_id}</td>${tds.join("")}</tr>`;
+    })
+    .join("");
+
+  table.innerHTML = thead + `<tbody>${tbodyRows}</tbody>`;
+}
+
+async function loadResultsView() {
+  try {
+    const resp = await fetch("/api/results");
+    const data = await resp.json();
+    if (!resp.ok)
+      throw new Error(data?.error || "Не удалось загрузить results");
+    renderResultsTable(data);
+  } catch (e) {
+    console.log("loadResultsView error:", e);
+    // мягко: не ломаем страницу
+    els.resultsTable.innerHTML =
+      `<thead><tr><th>Results</th></tr></thead>` +
+      `<tbody><tr><td>Ошибка загрузки результатов: ${String(e.message)}</td></tr></tbody>`;
+  }
+}
+
+function openResults() {
+  els.resultsOverlay.classList.remove("hidden");
+  // Загружаем таблицу при открытии (чтобы не дергать API всегда)
+  loadResultsView();
+}
+
+function closeResults() {
+  els.resultsOverlay.classList.add("hidden");
+}
+
+
 async function loadTasks() {
   const docId = els.docId.value.trim();
   hideResult();
@@ -225,6 +300,17 @@ els.docId.addEventListener("keydown", (e) => {
 els.hint1Btn.addEventListener("click", () => submit("hint1"));
 els.hint2Btn.addEventListener("click", () => submit("hint2"));
 els.answerBtn.addEventListener("click", () => submit("answer"));
+els.refreshResultsBtn.addEventListener("click", loadResultsView);
+els.openResultsBtn.addEventListener("click", openResults);
+els.closeResultsBtn.addEventListener("click", closeResults);
+els.resultsBackdrop.addEventListener("click", closeResults);
+
+// Закрытие по Escape
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !els.resultsOverlay.classList.contains("hidden")) {
+    closeResults();
+  }
+});
 
 // стартовое состояние
 showStatus("Введите свой идентификатор и нажмите «Загрузить».");

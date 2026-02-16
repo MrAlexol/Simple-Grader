@@ -50,13 +50,39 @@
               <div class="actions">
                 <button class="btn" id="hint1Btn">Подсказка 1</button>
                 <button class="btn" id="hint2Btn">Подсказка 2</button>
-                <button class="btn primary" id="answerBtn">Отправить ответ</button>
+                <button class="btn primary" id="answerBtn">
+                  Отправить ответ
+                </button>
               </div>
 
               <div class="result hidden" id="resultBox"></div>
             </div>
           </article>
         </section>
+
+        <!-- Floating button -->
+        <button id="openResultsBtn" class="floatingBtn">
+          Общие результаты
+        </button>
+
+        <!-- Overlay (hidden by default) -->
+        <div id="resultsOverlay" class="overlay hidden">
+          <div class="overlayBackdrop" id="resultsBackdrop"></div>
+
+          <div class="overlayPanel">
+            <div class="resultsHeader">
+              <h3 class="resultsTitle">Общие результаты</h3>
+              <div class="resultsHeaderActions">
+                <button id="refreshResultsBtn" class="btn">Обновить</button>
+                <button id="closeResultsBtn" class="btn">Закрыть</button>
+              </div>
+            </div>
+
+            <div class="resultsTableWrap">
+              <table class="resultsTable" id="resultsTable"></table>
+            </div>
+          </div>
+        </div>
       </main>
     </div>
 

@@ -10,7 +10,12 @@ const {
   findTasksByIds,
   appendLog,
   findTaskById,
-  appendApiLog,
+  getOrCreateResult,
+  incrementHintsUsed,
+  setResultCheck,
+  readAllUsers,
+  readAllResults,
+  readAllTasks,
 } = require("./db");
 const {
   callOpenAIForHint,
@@ -149,18 +154,27 @@ async function handleApi(req, res, url) {
       });
     }
 
+    // При первом действии с задачей создаём results-запись (если её нет)
+    await getOrCreateResult(user.id, taskId);
+
     let message;
 
     try {
       if (action === "hint1") {
         message = await callOpenAIForHint({ level: 1, task, code });
+        await incrementHintsUsed(user.id, taskId, 1);
       } else if (action === "hint2") {
         message = await callOpenAIForHint({ level: 2, task, code });
+        await incrementHintsUsed(user.id, taskId, 1);
       } else if (action === "answer") {
         message = await callOpenAIForAnswerVerdict({ task, code });
+
+        const OK = "Отлично, ответ принят";
+        await setResultCheck(user.id, taskId, message === OK);
       } else {
         console.log("[UNKNOWN ACTION]", action);
         message = "Найдены ошибки при автоматической проверке решения";
+        await setResultCheck(user.id, taskId, false);
       }
     } catch (e) {
       message = "Ошибка сервера!";
@@ -183,6 +197,62 @@ async function handleApi(req, res, url) {
     });
 
     return sendJson(res, 200, { ok: true, message });
+  }
+
+  // GET /api/results
+  // Возвращает таблицу: строки = doc_id, столбцы = задания (по union task_id),
+  // ячейка = {hints_used, check} или null
+  if (req.method === "GET" && url.pathname === "/api/results") {
+    const users = await readAllUsers();
+    const results = await readAllResults();
+    const tasks = await readAllTasks();
+
+    const taskById = new Map(tasks.map((t) => [t.id, t]));
+    const userById = new Map(users.map((u) => [u.id, u]));
+
+    // Индекс результатов по (user_id, task_id)
+    const resMap = new Map();
+    for (const r of results) {
+      resMap.set(`${r.user_id}:${r.task_id}`, {
+        hints_used: Number(r.hints_used || 0),
+        check: Boolean(r.check),
+      });
+    }
+
+    // Все task_id, встречающиеся у пользователей (по их tasks[])
+    const allTaskIdsSet = new Set();
+    for (const u of users) {
+      (u.tasks || []).forEach((tid) => allTaskIdsSet.add(Number(tid)));
+    }
+
+    // Оставим только существующие задания
+    const allTaskIds = [...allTaskIdsSet]
+      .filter((tid) => taskById.has(tid))
+      .sort((a, b) => a - b);
+
+    // Строки: по doc_id, а по столбцам — только задания, относящиеся к этому пользователю.
+    // (В остальных столбцах будет null)
+    const rows = users
+      .slice()
+      .sort((a, b) => Number(a.doc_id) - Number(b.doc_id))
+      .map((u) => {
+        const cells = {};
+        const userTaskIds = (u.tasks || []).map(Number);
+        for (const tid of userTaskIds) {
+          const key = `${u.id}:${tid}`;
+          cells[tid] = resMap.get(key) || { hints_used: 0, check: false }; // если записи нет, считаем 0/false
+        }
+        return {
+          doc_id: u.doc_id,
+          tasks: userTaskIds,
+          cells, // { [task_id]: {hints_used, check} }
+        };
+      });
+
+    return sendJson(res, 200, {
+      task_ids: allTaskIds,
+      rows,
+    });
   }
 
   return sendJson(res, 404, { error: "API endpoint not found" });
